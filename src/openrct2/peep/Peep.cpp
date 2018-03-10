@@ -44,6 +44,7 @@
 #include "../world/Footpath.h"
 #include "../world/Map.h"
 #include "../world/LargeScenery.h"
+#include "../world/PeepMap.h"
 #include "../world/Scenery.h"
 #include "../world/SmallScenery.h"
 #include "../world/Sprite.h"
@@ -582,6 +583,8 @@ void peep_update_all()
 
         i++;
     }
+
+    increment_guests_on_peep_map();
 }
 
 /**
