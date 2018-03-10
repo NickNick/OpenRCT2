@@ -64,6 +64,7 @@
 #include "world/Park.h"
 #include "world/Scenery.h"
 #include "world/Sprite.h"
+#include "world/PeepMap.h"
 #include "world/Water.h"
 #include "object/ObjectList.h"
 #include "interface/Window_internal.h"
@@ -1406,6 +1407,8 @@ void game_load_init()
 
     audio_stop_title_music();
     gGameSpeed = 1;
+
+    clear_heatmap();
 }
 
 /**

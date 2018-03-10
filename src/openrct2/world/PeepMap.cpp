@@ -16,19 +16,9 @@ void clear_heatmap()
     std::fill_n(begin, heatmap_size * heatmap_size, 0);
 }
 
-void clear_heatmap_once()
-{
-    static bool cleared = false;
-    if (!cleared)
-    {
-        clear_heatmap();
-        cleared = true;
-    }
-}
-
 void increment_guests_on_peep_map()
 {
-    clear_heatmap_once();
+    max_heatmap = 0;
 
     unsigned   sprite_index = 0;
     rct_peep * peep         = nullptr;
@@ -47,7 +37,7 @@ void increment_guests_on_peep_map()
 
     float * begin = &heatmap_data[0][0];
     for(unsigned int i = 0; i < heatmap_size * heatmap_size; i++){
-        begin[i] *= 0.99f;
+        begin[i] *= 0.995f;
     }
 }
 

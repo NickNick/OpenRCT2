@@ -24,7 +24,7 @@
 auto constexpr heatmap_size = MAXIMUM_MAP_SIZE_TECHNICAL;
 
 extern std::array<std::array<float, heatmap_size>, heatmap_size> heatmap_data;
-
+void clear_heatmap();
 void increment_guests_on_peep_map();
 float get_normalized_heatmap_value_at(TileCoordsXY const xy);
 
