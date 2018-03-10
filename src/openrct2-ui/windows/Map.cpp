@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <functional>
 #include <vector>
+#include <cmath>
 
 #include <openrct2/audio/audio.h>
 #include <openrct2/Cheats.h>
@@ -30,6 +31,7 @@
 #include <openrct2/ride/Track.h>
 #include <openrct2/world/Entrance.h>
 #include <openrct2/world/Footpath.h>
+#include <openrct2/world/PeepMap.h>
 #include <openrct2/world/Scenery.h>
 #include <openrct2-ui/interface/LandTool.h>
 #include <openrct2-ui/interface/Viewport.h>
@@ -254,7 +256,27 @@ rct_window * window_map_open()
         window_map_paint_train_overlay,
         STR_SHOW_RIDES_STALLS_ON_MAP_TIP,
         SPR_TAB_RIDE_0, 64});
-    
+
+
+    // Peep Map
+    {
+        auto map_colour = [](CoordsXY coords){
+            auto tcoords = TileCoordsXY{coords};
+            auto v = std::sqrt(get_normalized_heatmap_value_at(tcoords));
+            auto r = Math::Clamp(0.0f, 3*v, 1.0f);
+            auto g = Math::Clamp(0.0f, 3*v-1, 1.0f);
+            auto b = Math::Clamp(0.0f, 3*v-2, 1.0f);
+            auto colour = findClosestPaletteIndex(r*255, g*255, b*255);
+            if(v != 0){
+                return MAP_COLOUR(colour);
+            } else {
+                return 0;
+            }
+        };
+
+        map_tabs.push_back({map_colour, nullptr, STR_NONE, SPR_TAB_FINANCES_SUMMARY_0, 0});
+    }
+
     window_map_widgets_dymanic.clear();
     for(int idx = 0;; idx++){
         if(window_map_widgets[idx].type == WWT_LAST) {
