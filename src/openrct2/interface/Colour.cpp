@@ -64,7 +64,7 @@ void colours_init_maps()
 #ifndef NO_TTF
 static uint8 BlendColourMap[PALETTE_COUNT][PALETTE_COUNT] = {0};
 
-static uint8 findClosestPaletteIndex(uint8 red, uint8 green, uint8 blue)
+uint8 findClosestPaletteIndex(uint8 red, uint8 green, uint8 blue)
 {
     sint16 closest = -1;
     sint32 closestDistance = INT32_MAX;

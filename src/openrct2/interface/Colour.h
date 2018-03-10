@@ -154,4 +154,6 @@ void colours_init_maps();
 uint8 blendColours(const uint8 paletteIndex1, const uint8 paletteIndex2);
 #endif
 
+uint8 findClosestPaletteIndex(uint8 red, uint8 green, uint8 blue);
+
 #endif
