@@ -15,7 +15,9 @@
 #pragma endregion
 
 #include <algorithm>
+#include <functional>
 #include <vector>
+
 #include <openrct2/audio/audio.h>
 #include <openrct2/Cheats.h>
 #include <openrct2/Context.h>
@@ -71,7 +73,8 @@ enum WINDOW_MAP_WIDGET_IDX {
     WIDX_LAND_SALE_CHECKBOX = 18,
     WIDX_CONSTRUCTION_RIGHTS_SALE_CHECKBOX = 19,
     WIDX_ROTATE_90 = 20,
-    WIDX_MAP_GENERATOR = 21
+    WIDX_MAP_GENERATOR = 21,
+    WIDX_TABS = 22
 };
 
 validate_global_widx(WC_MAP, WIDX_LAND_TOOL);
@@ -172,6 +175,16 @@ static rct_window_event_list window_map_events = {
     window_map_scrollpaint
 };
 
+struct MapTab {
+    std::function<uint16(CoordsXY)> colour_for_position;
+    std::function<void(rct_drawpixelinfo*)> overlay;
+    // TODO: add icon, framecount and tooltip
+};
+
+static std::vector<MapTab> map_tabs;
+
+static std::vector<rct_widget> window_map_widgets_dymanic;
+
 /** rct2: 0x00F1AD61 */
 static uint8 _activeTool;
 
@@ -201,6 +214,8 @@ static void map_window_increase_map_size();
 static void map_window_decrease_map_size();
 static void map_window_set_pixels(rct_window *w);
 
+static uint16 map_window_get_pixel_colour_peep(CoordsXY c);
+
 static CoordsXY map_window_screen_to_map(sint32 screenX, sint32 screenY);
 
 /**
@@ -227,9 +242,30 @@ rct_window * window_map_open()
     {
         return nullptr;
     }
+    
+    map_tabs.clear();
+    map_tabs.push_back({map_window_get_pixel_colour_peep, window_map_paint_train_overlay});
+    
+    window_map_widgets_dymanic.clear();
+    for(int idx = 0;; idx++){
+        if(window_map_widgets[idx].type == WWT_LAST) {
+            break;
+        }
+        window_map_widgets_dymanic.push_back(window_map_widgets[idx]);
+    }
+    
+    sint16 left = 65;
+    sint16 incr = 31;
+    for(auto const & t : map_tabs) {
+        rct_widget w{WWT_COLOURBTN, 1, left, sint16(left + incr - 1), 17, 43, IMAGE_TYPE_REMAP | SPR_TAB, STR_NONE};
+        window_map_widgets_dymanic.push_back(w);
+        left += incr;
+    }
+    
+    window_map_widgets_dymanic.push_back({WIDGETS_END});
 
     w = window_create_auto_pos(245, 259, &window_map_events, WC_MAP, WF_10);
-    w->widgets = window_map_widgets;
+    w->widgets = window_map_widgets_dymanic.data();
     w->enabled_widgets =
         (1 << WIDX_CLOSE) |
         (1 << WIDX_PEOPLE_TAB) |
@@ -249,6 +285,12 @@ rct_window * window_map_open()
         (1 << WIDX_ROTATE_90) |
         (1 << WIDX_PEOPLE_STARTING_POSITION) |
         (1 << WIDX_MAP_GENERATOR);
+    
+    int tidx = 0;
+    for(const auto & t : map_tabs) {
+        w->enabled_widgets |= 1 << (WIDX_TABS + tidx);
+        tidx++;
+    }
 
     w->hold_down_widgets =
         (1 << WIDX_MAP_SIZE_SPINNER_UP) |
@@ -392,6 +434,16 @@ static void window_map_mouseup(rct_window *w, rct_widgetindex widgetIndex)
 
             w->selected_tab = widgetIndex;
             w->list_information_type = 0;
+            break;
+        }
+        
+        if (widgetIndex >= WIDX_TABS && widgetIndex < WIDX_TABS + map_tabs.size()) {
+            widgetIndex -= WIDX_TABS;
+            widgetIndex += 2;
+            
+            w->selected_tab = widgetIndex;
+            w->list_information_type = 0; // counter for animation
+            break;
         }
     }
  }
@@ -464,6 +516,11 @@ static void window_map_update(rct_window *w)
         break;
     case PAGE_RIDES:
         if (w->list_information_type >= 64) {
+            w->list_information_type = 0;
+        }
+        break;
+    default:
+        if (w->list_information_type >= 32) {
             w->list_information_type = 0;
         }
         break;
@@ -710,7 +767,10 @@ static void window_map_invalidate(rct_window *w)
     pressedWidgets &= (1ULL << WIDX_LAND_SALE_CHECKBOX);
     pressedWidgets &= (1ULL << WIDX_CONSTRUCTION_RIGHTS_SALE_CHECKBOX);
 
-    pressedWidgets |= (1ULL << (WIDX_PEOPLE_TAB + w->selected_tab));
+    if(w->selected_tab < 2)
+        pressedWidgets |= (1ULL << (WIDX_PEOPLE_TAB + w->selected_tab));
+    else
+        pressedWidgets |= (1ULL << (WIDX_TABS + w->selected_tab - 2));
     pressedWidgets |= (1ULL << WIDX_LAND_TOOL);
 
     if (_activeTool & (1 << 3))
@@ -900,15 +960,20 @@ static void window_map_scrollpaint(rct_window *w, rct_drawpixelinfo *dpi, sint32
     g1temp.y_offset = -8;
     gfx_set_g1_element(SPR_TEMP, &g1temp);
     gfx_draw_sprite(dpi, SPR_TEMP, 0, 0, 0);
-
-    if (w->selected_tab == PAGE_PEEPS)
-    {
+    
+    switch(w->selected_tab){
+    case PAGE_PEEPS:
         window_map_paint_peep_overlay(dpi);
-    }
-    else
-    {
+        break;
+    case PAGE_RIDES:
         window_map_paint_train_overlay(dpi);
+        break;
+    default:
+        if(map_tabs[w->selected_tab - 2].overlay)
+            map_tabs[w->selected_tab - 2].overlay(dpi);
+        break;
     }
+
     window_map_paint_hud_rectangle(dpi);
 }
 
@@ -1024,6 +1089,13 @@ static void window_map_draw_tab_images(rct_window *w, rct_drawpixelinfo *dpi)
         image += w->list_information_type / 4;
 
     gfx_draw_sprite(dpi, image, w->x + w->widgets[WIDX_RIDES_TAB].left, w->y + w->widgets[WIDX_RIDES_TAB].top, 0);
+    
+    for (int i = 0; i < map_tabs.size(); ++i) {
+        image = SPR_TAB_STATS_0;
+        if (w->selected_tab - 2 == i)
+            image += w->list_information_type / 4;
+        gfx_draw_sprite(dpi, image, w->x + w->widgets[WIDX_TABS + i].left, w->y + w->widgets[WIDX_TABS + i].top, 0);
+    }
 }
 
 /**
@@ -1661,6 +1733,11 @@ static void map_window_set_pixels(rct_window *w)
                 break;
             case PAGE_RIDES:
                 colour = map_window_get_pixel_colour_ride({x, y});
+                break;
+            default:
+                if (map_tabs[w->selected_tab - 2].colour_for_position) {
+                    colour = map_tabs[w->selected_tab - 2].colour_for_position({x, y});
+                }
                 break;
             }
             destination[0] = (colour >> 8) & 0xFF;
