@@ -47,8 +47,7 @@
 using MapCoordsXY = TileCoordsXY;
 
 enum {
-    PAGE_PEEPS,
-    PAGE_RIDES
+    PAGE_RIDES = 1
 };
 
 enum WINDOW_MAP_WIDGET_IDX {
@@ -85,8 +84,8 @@ static rct_widget window_map_widgets[] = {
     { WWT_CAPTION,          0,  1,      243,    1,      14,     STR_MAP_LABEL,                          STR_WINDOW_TITLE_TIP },
     { WWT_CLOSEBOX,         0,  232,    242,    2,      13,     STR_CLOSE_X,                            STR_CLOSE_WINDOW_TIP },
     { WWT_RESIZE,           1,  0,      244,    43,     257,    STR_NONE,                               STR_NONE },
-    { WWT_COLOURBTN,        1,  3,      33,     17,     43,     IMAGE_TYPE_REMAP | SPR_TAB,                   STR_SHOW_PEOPLE_ON_MAP_TIP },
-    { WWT_COLOURBTN,        1,  34,     64,     17,     43,     IMAGE_TYPE_REMAP | SPR_TAB,                   STR_SHOW_RIDES_STALLS_ON_MAP_TIP },
+    { WWT_EMPTY,            1,  3,      33,     17,     43,     IMAGE_TYPE_REMAP | SPR_TAB,                   STR_SHOW_PEOPLE_ON_MAP_TIP },
+    { WWT_EMPTY,            1,  34,     64,     17,     43,     IMAGE_TYPE_REMAP | SPR_TAB,                   STR_SHOW_RIDES_STALLS_ON_MAP_TIP },
     { WWT_SCROLL,           1,  3,      241,    46,     225,    SCROLL_BOTH,                            STR_NONE },
     { WWT_SPINNER,          1,  104,    198,    229,    240,    STR_MAP_SIZE_VALUE,                     STR_NONE },
     { WWT_BUTTON,           1,  187,    197,    230,    234,    STR_NUMERIC_UP,                         STR_NONE },
@@ -178,7 +177,9 @@ static rct_window_event_list window_map_events = {
 struct MapTab {
     std::function<uint16(CoordsXY)> colour_for_position;
     std::function<void(rct_drawpixelinfo*)> overlay;
-    // TODO: add icon, framecount and tooltip
+    rct_string_id tooltip;
+    uint32 sprite_idx;
+    uint16 max_frame_count;
 };
 
 static std::vector<MapTab> map_tabs;
@@ -215,6 +216,7 @@ static void map_window_decrease_map_size();
 static void map_window_set_pixels(rct_window *w);
 
 static uint16 map_window_get_pixel_colour_peep(CoordsXY c);
+static uint16 map_window_get_pixel_colour_ride(CoordsXY c);
 
 static CoordsXY map_window_screen_to_map(sint32 screenX, sint32 screenY);
 
@@ -244,7 +246,14 @@ rct_window * window_map_open()
     }
     
     map_tabs.clear();
-    map_tabs.push_back({map_window_get_pixel_colour_peep, window_map_paint_train_overlay});
+    map_tabs.push_back({map_window_get_pixel_colour_peep,
+        window_map_paint_peep_overlay,
+        STR_SHOW_PEOPLE_ON_MAP_TIP,
+        SPR_TAB_GUESTS_0, 32});
+    map_tabs.push_back({map_window_get_pixel_colour_ride,
+        window_map_paint_train_overlay,
+        STR_SHOW_RIDES_STALLS_ON_MAP_TIP,
+        SPR_TAB_RIDE_0, 64});
     
     window_map_widgets_dymanic.clear();
     for(int idx = 0;; idx++){
@@ -254,7 +263,7 @@ rct_window * window_map_open()
         window_map_widgets_dymanic.push_back(window_map_widgets[idx]);
     }
     
-    sint16 left = 65;
+    sint16 left = 3;
     sint16 incr = 31;
     for(auto const & t : map_tabs) {
         rct_widget w{WWT_COLOURBTN, 1, left, sint16(left + incr - 1), 17, 43, IMAGE_TYPE_REMAP | SPR_TAB, STR_NONE};
@@ -268,8 +277,6 @@ rct_window * window_map_open()
     w->widgets = window_map_widgets_dymanic.data();
     w->enabled_widgets =
         (1 << WIDX_CLOSE) |
-        (1 << WIDX_PEOPLE_TAB) |
-        (1 << WIDX_RIDES_TAB) |
         (1 << WIDX_MAP_SIZE_SPINNER) |
         (1 << WIDX_MAP_SIZE_SPINNER_UP) |
         (1 << WIDX_MAP_SIZE_SPINNER_DOWN) |
@@ -427,22 +434,13 @@ static void window_map_mouseup(rct_window *w, rct_widgetindex widgetIndex)
         context_open_window(WC_MAPGEN);
         break;
     default:
-        if (widgetIndex >= WIDX_PEOPLE_TAB && widgetIndex <= WIDX_RIDES_TAB) {
-            widgetIndex -= WIDX_PEOPLE_TAB;
-            if (widgetIndex == w->selected_tab)
-                break;
-
-            w->selected_tab = widgetIndex;
-            w->list_information_type = 0;
-            break;
-        }
-        
         if (widgetIndex >= WIDX_TABS && widgetIndex < WIDX_TABS + map_tabs.size()) {
             widgetIndex -= WIDX_TABS;
-            widgetIndex += 2;
+            if (widgetIndex == w->selected_tab)
+                break;
             
             w->selected_tab = widgetIndex;
-            w->list_information_type = 0; // counter for animation
+            w->list_information_type = 0;
             break;
         }
     }
@@ -508,22 +506,8 @@ static void window_map_update(rct_window *w)
 
     // Update tab animations
     w->list_information_type++;
-    switch (w->selected_tab) {
-    case PAGE_PEEPS:
-        if (w->list_information_type >= 32) {
-            w->list_information_type = 0;
-        }
-        break;
-    case PAGE_RIDES:
-        if (w->list_information_type >= 64) {
-            w->list_information_type = 0;
-        }
-        break;
-    default:
-        if (w->list_information_type >= 32) {
-            w->list_information_type = 0;
-        }
-        break;
+    if (w->list_information_type >= map_tabs[w->selected_tab].max_frame_count) {
+        w->list_information_type = 0;
     }
 }
 
@@ -759,18 +743,13 @@ static void window_map_invalidate(rct_window *w)
 
     // Set the pressed widgets
     pressedWidgets = w->pressed_widgets;
-    pressedWidgets &= (1ULL << WIDX_PEOPLE_TAB);
-    pressedWidgets &= (1ULL << WIDX_RIDES_TAB);
     pressedWidgets &= (1ULL << WIDX_MAP);
     pressedWidgets &= (1ULL << WIDX_LAND_OWNED_CHECKBOX);
     pressedWidgets &= (1ULL << WIDX_CONSTRUCTION_RIGHTS_OWNED_CHECKBOX);
     pressedWidgets &= (1ULL << WIDX_LAND_SALE_CHECKBOX);
     pressedWidgets &= (1ULL << WIDX_CONSTRUCTION_RIGHTS_SALE_CHECKBOX);
 
-    if(w->selected_tab < 2)
-        pressedWidgets |= (1ULL << (WIDX_PEOPLE_TAB + w->selected_tab));
-    else
-        pressedWidgets |= (1ULL << (WIDX_TABS + w->selected_tab - 2));
+    pressedWidgets |= (1ULL << (WIDX_TABS + w->selected_tab));
     pressedWidgets |= (1ULL << WIDX_LAND_TOOL);
 
     if (_activeTool & (1 << 3))
@@ -961,18 +940,8 @@ static void window_map_scrollpaint(rct_window *w, rct_drawpixelinfo *dpi, sint32
     gfx_set_g1_element(SPR_TEMP, &g1temp);
     gfx_draw_sprite(dpi, SPR_TEMP, 0, 0, 0);
     
-    switch(w->selected_tab){
-    case PAGE_PEEPS:
-        window_map_paint_peep_overlay(dpi);
-        break;
-    case PAGE_RIDES:
-        window_map_paint_train_overlay(dpi);
-        break;
-    default:
-        if(map_tabs[w->selected_tab - 2].overlay)
-            map_tabs[w->selected_tab - 2].overlay(dpi);
-        break;
-    }
+    if(map_tabs[w->selected_tab].overlay)
+        map_tabs[w->selected_tab].overlay(dpi);
 
     window_map_paint_hud_rectangle(dpi);
 }
@@ -1074,25 +1043,9 @@ static void window_map_inputsize_map(rct_window *w)
 
 static void window_map_draw_tab_images(rct_window *w, rct_drawpixelinfo *dpi)
 {
-    uint32 image;
-
-    // Guest tab image (animated)
-    image = SPR_TAB_GUESTS_0;
-    if (w->selected_tab == PAGE_PEEPS)
-        image += w->list_information_type / 4;
-
-    gfx_draw_sprite(dpi, image, w->x + w->widgets[WIDX_PEOPLE_TAB].left, w->y + w->widgets[WIDX_PEOPLE_TAB].top, 0);
-
-    // Ride/stall tab image (animated)
-    image = SPR_TAB_RIDE_0;
-    if (w->selected_tab == PAGE_RIDES)
-        image += w->list_information_type / 4;
-
-    gfx_draw_sprite(dpi, image, w->x + w->widgets[WIDX_RIDES_TAB].left, w->y + w->widgets[WIDX_RIDES_TAB].top, 0);
-    
     for (int i = 0; i < map_tabs.size(); ++i) {
-        image = SPR_TAB_STATS_0;
-        if (w->selected_tab - 2 == i)
+        auto image = map_tabs[i].sprite_idx;
+        if (w->selected_tab == i)
             image += w->list_information_type / 4;
         gfx_draw_sprite(dpi, image, w->x + w->widgets[WIDX_TABS + i].left, w->y + w->widgets[WIDX_TABS + i].top, 0);
     }
@@ -1727,18 +1680,8 @@ static void map_window_set_pixels(rct_window *w)
             x < gMapSizeUnits &&
             y < gMapSizeUnits
         ) {
-            switch (w->selected_tab) {
-            case PAGE_PEEPS:
-                colour = map_window_get_pixel_colour_peep({x, y});
-                break;
-            case PAGE_RIDES:
-                colour = map_window_get_pixel_colour_ride({x, y});
-                break;
-            default:
-                if (map_tabs[w->selected_tab - 2].colour_for_position) {
-                    colour = map_tabs[w->selected_tab - 2].colour_for_position({x, y});
-                }
-                break;
+            if (map_tabs[w->selected_tab].colour_for_position) {
+                colour = map_tabs[w->selected_tab].colour_for_position({x, y});
             }
             destination[0] = (colour >> 8) & 0xFF;
             destination[1] = colour;
