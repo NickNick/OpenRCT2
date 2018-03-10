@@ -266,8 +266,9 @@ rct_window * window_map_open()
     sint16 left = 3;
     sint16 incr = 31;
     for(auto const & t : map_tabs) {
-        rct_widget w{WWT_COLOURBTN, 1, left, sint16(left + incr - 1), 17, 43, IMAGE_TYPE_REMAP | SPR_TAB, STR_NONE};
-        window_map_widgets_dymanic.push_back(w);
+        (void)(t);
+        rct_widget maptabw{WWT_COLOURBTN, 1, left, sint16(left + incr - 1), 17, 43, IMAGE_TYPE_REMAP | SPR_TAB, STR_NONE};
+        window_map_widgets_dymanic.push_back(maptabw);
         left += incr;
     }
     
@@ -295,6 +296,7 @@ rct_window * window_map_open()
     
     int tidx = 0;
     for(const auto & t : map_tabs) {
+        (void)(t);
         w->enabled_widgets |= 1 << (WIDX_TABS + tidx);
         tidx++;
     }
